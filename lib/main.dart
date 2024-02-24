@@ -35,7 +35,7 @@ void main()async {
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'Flutter Demo',
+        title: 'Flutter Demo 1',
         theme: ThemeData(),
         home: const MySplashScreen(),
       ),
