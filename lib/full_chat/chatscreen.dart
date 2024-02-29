@@ -1,7 +1,10 @@
 import 'dart:collection';
 import 'dart:io';
+import 'package:chat_firebase/full_chat/MyUserModel.dart';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
@@ -9,9 +12,12 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'MyProvider.dart';
 import 'constantsdata.dart';
 class MyChatPage extends StatefulWidget {
-  const MyChatPage({Key? key}) : super(key: key);
+  final MyUserModel userModel;
+  const MyChatPage({required this.userModel});
+  //const MyChatPage({Key? key, required MyUserModel userModel}) : super(key: key);
 
   @override
   State<MyChatPage> createState() => _MyChatPageState();
@@ -21,7 +27,10 @@ class _MyChatPageState extends State<MyChatPage> {
   //je user lakhsai ena maate
   TextEditingController txtmsg = TextEditingController();
   late FirebaseFirestore firestore;
+  late MyProvider provider;
+
   List<Map<String, dynamic>> mylist = [];
+  ScrollController _scrollController=ScrollController();
   bool _showEmoji=false;
   late FileType _fileType;
   late Reference _storageRef;
@@ -109,7 +118,16 @@ class _MyChatPageState extends State<MyChatPage> {
 
       await firestore.collection("chats").doc().set(data);
       txtmsg.clear();
+      scrollToBottom();
+
     }
+  }
+  void scrollToBottom() {
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   void getMsg() {
@@ -127,11 +145,7 @@ class _MyChatPageState extends State<MyChatPage> {
       setState(() {});
     });
   }
-  void deleteMsg(String messageId) async {
-    await firestore.collection("chats").doc(messageId).update({
-      "deleted": true,
-    });
-  }
+
 
 
   @override
@@ -147,6 +161,7 @@ class _MyChatPageState extends State<MyChatPage> {
   }
 
   Widget build(BuildContext context) {
+    provider = Provider.of<MyProvider>(context, listen: false);
     return SafeArea(
       child: Scaffold(
         body: _mainBody(),
@@ -186,29 +201,27 @@ class _MyChatPageState extends State<MyChatPage> {
             ),
           ),
           SizedBox(width: 16),
-          CircleAvatar(
-            radius: 20,
-            backgroundImage: AssetImage('assests/images/my_image.png'),
+          ClipOval(
+            child: CircleAvatar(
+              radius: 20,
+              child: Image.network(
+                widget.userModel.imgurl,
+              ),
+            ),
           ),
           SizedBox(width: 16),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                Constants.username,
+                widget.userModel.name,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Text(
-                Constants.userid,
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 14,
-                ),
-              ),
+
             ],
           ),
           Spacer(),
@@ -450,5 +463,5 @@ class _MyChatPageState extends State<MyChatPage> {
     } else {
       return 'Just now';
     }
- }
+  }
 }

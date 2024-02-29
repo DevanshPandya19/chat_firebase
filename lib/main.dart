@@ -13,6 +13,7 @@ import 'firebase_options.dart';
 import 'package:flutter_windowmanager/flutter_windowmanager.dart';
 
 import 'full_chat/MyProvider.dart';
+import 'full_chat/MyuserModel.dart';
 import 'full_chat/chatscreen.dart';
 
 
@@ -23,9 +24,9 @@ void main()async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
-  if (Platform.isAndroid) {
-    await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
-  }
+  //if (Platform.isAndroid) {
+    //await FlutterWindowManager.addFlags(FlutterWindowManager.FLAG_SECURE);
+  //}
 
 
   runApp(
@@ -35,7 +36,7 @@ void main()async {
       ],
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'Flutter Demo1',
+        title: 'We Chat',
         theme: ThemeData(),
         home: const MySplashScreen(),
       ),

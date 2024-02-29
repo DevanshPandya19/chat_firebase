@@ -1,17 +1,17 @@
 import 'dart:collection';
-
-import 'package:chat_firebase/full_chat/MyProvider.dart';
-import 'package:chat_firebase/full_chat/MyuserModal.dart';
-import 'package:chat_firebase/full_chat/myuserlist.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 
+import 'MyProvider.dart';
+import 'MyUserModel.dart';
+import 'myuserlist.dart';
+
 class MyLoginPage extends StatefulWidget {
-  const MyLoginPage({Key? key}) : super(key: key);
+  const MyLoginPage({Key? key});
 
   @override
   State<MyLoginPage> createState() => _MyLoginPageState();
@@ -19,13 +19,8 @@ class MyLoginPage extends StatefulWidget {
 
 class _MyLoginPageState extends State<MyLoginPage> {
   GoogleSignInAccount? account;
-  User? user;
-  bool isLogin = false;
 
-  @override
-  void initState() {
-    super.initState();
-  }
+  bool isLogin = false;
 
   @override
   Widget build(BuildContext context) {
@@ -34,60 +29,64 @@ class _MyLoginPageState extends State<MyLoginPage> {
 
   Future<void> doGoogleLogin() async {
     try {
-      GoogleSignInAccount? signedInAccount = await GoogleSignIn().signIn();
+      account = await GoogleSignIn().signIn();
 
-      isLogin = true;
-      setState(() {});
+      setState(() {
+        isLogin = true;
+      });
 
-      if (signedInAccount != null) {
-        print(" login  successfully");
-        setState(() {
-          account = signedInAccount; // Assign signedInAccount to account
-        });
-        doFirebaseLogin();
+      if (account != null) {
+        await doFirebaseLogin();
       } else {
-        print("Not logged in");
+        setState(() {
+          isLogin = false;
+        });
+        print("Google sign in failed");
       }
-    } catch (e, s) {
-      print("Error during login: $e");
-      print(s);
+    } catch (e) {
+      print("Error : $e");
+      setState(() {
+        isLogin = false;
+      });
     }
   }
 
   Future<void> doFirebaseLogin() async {
     try {
-      GoogleSignInAuthentication authentication = await account!.authentication;
-
+      GoogleSignInAuthentication authentication =
+      await account!.authentication;
       FirebaseAuth auth = FirebaseAuth.instance;
+
       AuthCredential authCredential = GoogleAuthProvider.credential(
         accessToken: authentication.accessToken,
         idToken: authentication.idToken,
       );
+
       UserCredential? userCredential =
       await auth.signInWithCredential(authCredential);
+
       if (userCredential != null) {
-        isLogin = false;
-        setState(() {});
-        checkAndSaveUser(userCredential.user!);
-        //Navigator.push(
-          //  context, MaterialPageRoute(builder: (ctx) => MyUserList()));
+        await checkAndSaveUser(userCredential.user!);
+      } else {
+        setState(() {
+          isLogin = false;
+        });
+        print("Firebase sign in failed");
       }
     } catch (e) {
-      isLogin = true;
-      setState(() {});
-
-      print("Error during login: $e");
+      print("Error : $e");
+      setState(() {
+        isLogin = false;
+      });
     }
   }
 
   Future<void> checkAndSaveUser(User user) async {
-    DocumentSnapshot snapshot = await FirebaseFirestore.instance
-        .collection("myusers")
-        .doc(user.uid)
-        .get();
+    DocumentSnapshot snapshot =
+    await FirebaseFirestore.instance.collection("myusers").doc(user.uid).get();
 
-    if (snapshot.data() == null) {
-      print("New User ");
+    if (!snapshot.exists) {
+      print("New user");
 
       Map<String, dynamic> userdata = HashMap();
       userdata["name"] = user.displayName;
@@ -95,50 +94,49 @@ class _MyLoginPageState extends State<MyLoginPage> {
       userdata["email"] = user.email;
       userdata["status"] = "online";
       userdata["uid"] = user.uid;
-      //for putting
+      userdata["createdAt"] = FieldValue.serverTimestamp();
 
-      MyUserModal modal = MyUserModal(
-          name: user.displayName!,
-          email: user.email!,
-          uid: user.uid!,
-          imgurl: user.photoURL!,
-          status: "online");
-
-   Provider.of<MyProvider>(context, listen: false)
-          .setUserModal(modal, isRefresh: false);
-
-      await FirebaseFirestore.instance
-          .collection("myusers")
-          .doc(user.uid)
-          .set(userdata);
-    } else {
-
-
-      Map<dynamic,dynamic>data=snapshot.data() as Map;
-
-
-      MyUserModal modal = MyUserModal(
-        name: data["name"],
-        email: data["email"],
+      MyUserModel model = MyUserModel(
+        name: user.displayName!,
+        email: user.email!,
+        imgurl: user.photoURL!,
+        status: "online",
         uid: user.uid!,
-        imgurl: data["imgurl"],
-        status: data["online"],
       );
 
-     Provider.of<MyProvider>(context, listen: false)
-          .setUserModal(modal, isRefresh: false);
+      Provider.of<MyProvider>(context, listen: false).setUserModel(model, isRefresh: false);
 
+      await FirebaseFirestore.instance.collection("myusers").doc(user.uid).set(userdata);
+    } else {
+      print("Existing user");
 
+      Map<dynamic, dynamic> data = snapshot.data() as Map;
 
+      MyUserModel model = MyUserModel(
+        name: data["name"],
+        email: data["email"],
+        imgurl: data["imgurl"],
+        status: data["status"],
+        uid: user.uid!,
+      );
 
-      print("Old User ");
+      Provider.of<MyProvider>(context, listen: false).setUserModel(model, isRefresh: false);
     }
-    Navigator.push(context, MaterialPageRoute(builder: (ctx) => MyUserList()));
-   // MyUserModal currentUser=Provider.of<MyProvider>(context,listen: false).usermodal!;
 
-    //print("current user : ${currentUser.uid}");
 
+    await updateUserStatus("online", user.uid!);
+
+
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (ctx) => MyUserList()));
   }
+
+  Future<void> updateUserStatus(String status, String uid) async {
+    await FirebaseFirestore.instance.collection("myusers").doc(uid).update({
+      "status": status,
+    });
+    print("User status updated successfully to $status");
+  }
+
 
   Widget _buildBody() {
     return SafeArea(
@@ -148,19 +146,14 @@ class _MyLoginPageState extends State<MyLoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                isLogin
-                    ? SpinKitCircle(
-                  color: Colors.black,
-                  size: 50,
-                )
-                    : loginBtn(),
+                isLogin?SpinKitCircle(color: Colors.orange,size: 50,): _loginBtn(),
               ],
             ),
           ),
         ));
   }
 
-  Widget loginBtn() {
+  Widget _loginBtn() {
     return InkWell(
       onTap: () {
         doGoogleLogin();
@@ -170,7 +163,7 @@ class _MyLoginPageState extends State<MyLoginPage> {
         padding: EdgeInsets.all(10),
         child: Text(
           "Login With Google",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
         ),
       ),
     );

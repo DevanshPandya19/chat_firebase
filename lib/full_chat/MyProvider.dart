@@ -2,24 +2,25 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'package:flutter/cupertino.dart';
 
+import 'MyUserModel.dart';
 
-import 'MyuserModal.dart';
+
 
 class MyProvider extends ChangeNotifier{
 
 
 
-  MyUserModal? _usermodal;
+  MyUserModel? _usermodel;
 
 
-  void setUserModal(MyUserModal userModal,{bool isRefresh=true})
+  void setUserModel(MyUserModel userModel,{bool isRefresh=true})
   {
-    _usermodal=userModal;
+    _usermodel=userModel;
 
     if(isRefresh)notifyListeners();
   }
 
 
 
-  MyUserModal? get usermodal => _usermodal;
+  MyUserModel? get usermodel => _usermodel;
 }

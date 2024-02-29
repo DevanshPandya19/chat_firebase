@@ -1,15 +1,13 @@
+import 'package:chat_firebase/full_chat/myuserlist.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:provider/provider.dart';
 
-import 'MyuserModal.dart';
+import 'MyProvider.dart';
+import 'MyUserModel.dart';
 import 'myloginpage.dart';
-import 'myprovider.dart';
-import 'myuserlist.dart';
-
 class MySplashScreen extends StatefulWidget {
   const MySplashScreen({super.key});
 
@@ -30,7 +28,7 @@ class _MySplashScreenState extends State<MySplashScreen> {
 
       Map<dynamic, dynamic> data = snapshot.data() as Map;
 
-      MyUserModal modal = MyUserModal(
+      MyUserModel model = MyUserModel(
           name: data["name"],
           email: data["email"],
           imgurl: data["imgurl"],
@@ -38,12 +36,11 @@ class _MySplashScreenState extends State<MySplashScreen> {
           uid: FirebaseAuth.instance.currentUser!.uid);
 
       Provider.of<MyProvider>(context, listen: false)
-          .setUserModal(modal, isRefresh: false);
+          .setUserModel(model, isRefresh: false);
 
       print("old user");
 
-      Navigator.push(
-          context, MaterialPageRoute(builder: (ctx) => MyUserList()));
+      Navigator.push(context, MaterialPageRoute(builder: (ctx) => MyUserList()));
     }
   }
 
@@ -73,6 +70,4 @@ class _MySplashScreenState extends State<MySplashScreen> {
         ));
   }
 }
-
-
 

@@ -1,14 +1,13 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
 
 import 'GroupChat.dart';
 import 'MyProvider.dart';
-
-import 'MyuserModal.dart';
+import 'MyUserModel.dart';
 import 'Splash_page.dart';
 import 'chatscreen.dart';
 
@@ -20,104 +19,96 @@ class MyUserList extends StatefulWidget {
 }
 
 class _MyUserListState extends State<MyUserList> {
-
-
-
-  List<MyUserModal> users=[];
+  List<MyUserModel> users = [];
 
   @override
   void initState() {
-
     super.initState();
     getUserList();
   }
-
 
   @override
   Widget build(BuildContext context) {
     return _mainBody();
   }
 
-
-
-  void getUserList()async{
-
-
+  void getUserList() async {
     FirebaseFirestore.instance.collection("myusers").get().then((value) {
-
-
-      List<DocumentSnapshot> docs=value.docs;
-
+      List<DocumentSnapshot> docs = value.docs;
       users.clear();
 
-
-     MyUserModal currentUser=Provider.of<MyProvider>(context,listen: false).usermodal!;
+      MyUserModel currentUser =
+          Provider.of<MyProvider>(context, listen: false).usermodel!;
 
       print("current user : ${currentUser.uid}");
 
-      for(int i=0;i<docs.length;i++)
-      {
+      for (int i = 0; i < docs.length; i++) {
+        Map<dynamic, dynamic>? data = docs[i].data() as Map<dynamic, dynamic>?;
 
-        Map<dynamic,dynamic> data=docs[i].data() as Map;
+        if (data != null) {
+          // Check if data is not null
+          MyUserModel model = MyUserModel(
+            name:
+                data["name"] ?? "", // Use default value if data["name"] is null
+            email: data["email"] ?? "",
+            imgurl: data["imgurl"] ?? "",
+            status: data["status"] ?? "",
+            uid: data["uid"] ?? "",
+          );
 
-
-        MyUserModal modal=MyUserModal(name: data["name"], email: data["email"], imgurl:data["imgurl"], status: data["status"], uid: data["uid"]);
-
-        if(modal.uid!=Provider.of<MyProvider>(context,listen: false).usermodal!.uid) {
-          users.add(modal);
+          if (model.uid != currentUser.uid) {
+            users.add(model);
+          }
         }
       }
 
-
-      setState(() {
-
-      });
-
-
-
-
+      setState(() {});
     });
-
-
-
   }
 
-
-  Future<void> doLogout()async{
+  Future<void> updateUserStatus(String status, String uid) async {
     try {
+      await FirebaseFirestore.instance.collection("myusers").doc(uid).update({
+        "status": status,
+      });
+      print("User status updated successfully to $status");
+    } catch (e) {
+      print("Error updating user status: $e");
+    }
+  }
 
+  Future<void> doLogout() async {
+    try {
+      // Call updateUserStatus to set status to "offline"
+      await updateUserStatus("offline", FirebaseAuth.instance.currentUser!.uid);
+
+      // Perform logout actions
       await GoogleSignIn().disconnect();
       await FirebaseAuth.instance.signOut();
 
-      Navigator.push(context, MaterialPageRoute(builder: (ctx) => MySplashScreen()));
-
-
-
+      // Navigate to splash screen or login page
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (ctx) => MySplashScreen()));
     } catch (e) {
-
       print("Error : $e");
     }
   }
 
-
-  Widget myListView(){
+  Widget myListView() {
     return ListView.builder(
-
         itemCount: users.length,
-        itemBuilder: (ctx,index){
-
+        itemBuilder: (ctx, index) {
           return userItem(users[index]);
-
-
         });
   }
 
-  Widget userItem(MyUserModal user)
-  {
-    return InkWell(
-      onTap: (){
-        Navigator.push(context, MaterialPageRoute(builder: (ctx) => MyChatPage()));
+  //
 
+  Widget userItem(MyUserModel user) {
+    return InkWell(
+      onTap: () {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (ctx) => MyChatPage(userModel: user)));
       },
       child: Container(
         child: Column(
@@ -125,7 +116,7 @@ class _MyUserListState extends State<MyUserList> {
             Container(
               padding: EdgeInsets.all(10),
               width: double.maxFinite,
-              child:Row(
+              child: Row(
                 children: [
                   Container(
                     height: 70,
@@ -134,18 +125,36 @@ class _MyUserListState extends State<MyUserList> {
                       child: Image.network(user.imgurl),
                     ),
                   ),
-                  SizedBox(width: 20,),
+                  SizedBox(
+                    width: 20,
+                  ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(user.name,style: TextStyle(fontWeight: FontWeight.w600,fontSize: 20),),
-                      Text(user.status,style: TextStyle(fontWeight: FontWeight.w500,fontSize: 14),),
+                      Text(
+                        user.name,
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 20),
+                      ),
+                      Text(
+                        user.status == "online" ? "Online" : "Offline",
+                        style: TextStyle(
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                            color: user.status == "online"
+                                ? Colors.green
+                                : Colors.red),
+                      ), // Display online or offline status
                     ],
                   )
                 ],
               ),
             ),
-            Container(width: double.maxFinite,height: 1,color: Colors.grey,),
+            Container(
+              width: double.maxFinite,
+              height: 1,
+              color: Colors.grey,
+            ),
           ],
         ),
       ),
@@ -155,50 +164,50 @@ class _MyUserListState extends State<MyUserList> {
   Widget _mainBody() {
     return SafeArea(
         child: Scaffold(
-          appBar: AppBar(
-            backgroundColor: Colors.blue,
-            leading: Icon(Icons.wechat),
-            title:  Shimmer.fromColors(
-              baseColor: Colors.white,
-              highlightColor: Colors.grey,
-              child: SizedBox(
-                width: 100,
-                height: 30,
-                child: Text(
-                  "Chat Room",
-                  style: TextStyle(
-                    fontSize: 20.0,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-
-            actions: [InkWell(onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (ctx) => MyChatPage()));
-
-            }, child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Icon(Icons.group),
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        leading: InkWell(
+            onTap: () {
+              Navigator.pop(context);
+            },
+            child: Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.white,
             )),
-              InkWell(onTap: () {
-
-                doLogout();
-
-              }, child: Padding(
-                padding: const EdgeInsets.only(right: 20),
-                child: Icon(Icons.logout),
-              ))
-            ],
-          ),
-          body: Container(
-              child: Column(
-                children: [
-
-                  Expanded(child: myListView())
-
-                ],
+        title: Text(
+          "Chat Room",
+          style: TextStyle(color: Colors.white),
+        ),
+        actions: [
+          InkWell(
+              onTap: () {
+                Navigator.push(context,
+                    MaterialPageRoute(builder: (ctx) => MyGroupChatPage()));
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Icon(
+                  Icons.groups,
+                  color: Colors.white,
+                ),
               )),
-        ));
+          InkWell(
+              onTap: () {
+                doLogout();
+              },
+              child: Padding(
+                padding: const EdgeInsets.only(right: 20),
+                child: Icon(
+                  Icons.logout,
+                  color: Colors.white,
+                ),
+              ))
+        ],
+      ),
+      body: Container(
+          child: Column(
+        children: [Expanded(child: myListView())],
+      )),
+    ));
   }
 }
