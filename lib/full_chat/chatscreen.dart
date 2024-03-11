@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:chat_firebase/full_chat/MyUserModel.dart';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,17 +29,44 @@ class _MyChatPageState extends State<MyChatPage> {
   TextEditingController txtmsg = TextEditingController();
   late FirebaseFirestore firestore;
   late MyProvider provider;
+  String chatId="";
 
   List<Map<String, dynamic>> mylist = [];
   ScrollController _scrollController=ScrollController();
   bool _showEmoji=false;
   late FileType _fileType;
   late Reference _storageRef;
+  String msgCollectionId="mypersonalchat";
+  Future<String> getChatId() async {
+    String otherUserId = widget.userModel.uid;
+    String myUserId = FirebaseAuth.instance.currentUser!.uid;
 
-  // Storage reference for uploading files
+    String AB = myUserId + otherUserId;
+    String BA = otherUserId + myUserId;
+
+    DocumentSnapshot snapshot = await FirebaseFirestore.instance
+        .collection(msgCollectionId)
+        .doc(AB)
+        .get();
+
+    if (snapshot.exists) {
+      return AB;
+    } else {
+      DocumentSnapshot snapshot1 = await FirebaseFirestore.instance
+          .collection(msgCollectionId)
+          .doc(BA)
+          .get();
+
+      if (snapshot1.exists) {
+        return BA;
+      } else {
+        return AB;
+      }
+    }
+  }
 
   void _makePhoneCall() async {
-    const url = 'tel:9724334152';
+    const url = 'tel:';
     if (await canLaunchUrl(Uri.parse(url))) {
       await launchUrl(Uri.parse(url));
     } else {
@@ -85,23 +113,26 @@ class _MyChatPageState extends State<MyChatPage> {
       print('Error picking file: $e');
     }
   }
+
   Future<void> _handleFileSelection(File file) async {
     try {
-      final String fileName = DateTime
-          .now()
-          .millisecondsSinceEpoch
-          .toString();
+      final String fileName = DateTime.now().millisecondsSinceEpoch.toString();
       final uploadTask = _storageRef.child('chats/$fileName').putFile(file);
 
       final TaskSnapshot snapshot = await uploadTask;
       final String downloadUrl = await snapshot.ref.getDownloadURL();
 
+      // Ensure _fileType is set properly
+      _fileType = FileType.any;
 
+      // Call sentMsg with the file URL
       sentMsg(msg: downloadUrl, fileType: _fileType);
     } catch (e) {
       print('Error uploading file: $e');
     }
   }
+
+
 
   Future<void> sentMsg({String? msg, FileType? fileType}) async {
     String m = txtmsg.text;
@@ -111,12 +142,12 @@ class _MyChatPageState extends State<MyChatPage> {
       Map<String, dynamic> data = new HashMap();
       data["msg"] = m;
       data["createdAt"] = FieldValue.serverTimestamp();
-      data["sender"] = Constants.userid;
-      data["senderName"] = Constants.username;
-      data["deleted"] = false;
-      data["fileType"] = fileType?.toString();
+      data["sender"] = provider.usermodel!.uid;
+      data["senderName"] = provider.usermodel!.name;
+      data["senderImage"]=provider.usermodel!.imgurl;
+    //  data["fileType"] = fileType?.toString();
 
-      await firestore.collection("chats").doc().set(data);
+      await firestore.collection(msgCollectionId).doc().set(data);
       txtmsg.clear();
       scrollToBottom();
 
@@ -130,9 +161,10 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
-  void getMsg() {
+  Future<void> getMsg() async{
+    chatId=await getChatId();
     firestore
-        .collection("chats").orderBy("createdAt", descending: true)
+        .collection(msgCollectionId).orderBy("createdAt", descending: true)
         .snapshots(includeMetadataChanges: true)
         .listen((data) {
       mylist.clear();
@@ -142,6 +174,8 @@ class _MyChatPageState extends State<MyChatPage> {
         Map<String, dynamic> mydata = d.data() as Map<String, dynamic>;
         mylist.add(mydata);
       }
+
+
       setState(() {});
     });
   }
@@ -151,6 +185,7 @@ class _MyChatPageState extends State<MyChatPage> {
   @override
   void initState() {
     super.initState();
+    _scrollController = ScrollController();
     _fileType = FileType.any;
     _storageRef = FirebaseStorage.instance.ref();
 
@@ -164,20 +199,33 @@ class _MyChatPageState extends State<MyChatPage> {
     provider = Provider.of<MyProvider>(context, listen: false);
     return SafeArea(
       child: Scaffold(
-        body: _mainBody(),
+        body: Container(
+          color: Colors.white10.withOpacity(0.8),
+          child: _mainBody(),
+        ),
       ),
     );
   }
 
+
   Widget _mainBody() {
-    return Column(
-      children: [
-        _appbar(),
-        _msgBody(),
-        _chatInput(),
-      ],
+    return Container(
+      decoration: BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assests/images/background_image.png'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: Column(
+        children: [
+          _appbar(),
+          _msgBody(),
+          _chatInput(),
+        ],
+      ),
     );
   }
+
 
   Widget _appbar() {
     return Container(
@@ -253,7 +301,7 @@ class _MyChatPageState extends State<MyChatPage> {
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: Colors.white70,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: Row(
@@ -383,16 +431,136 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
+
+
   Widget _msgBody() {
     return Expanded(
       child: ListView.builder(
+        controller: _scrollController,
         itemCount: mylist.length,
+
         itemBuilder: (ctx, index) {
-          return myItem(mylist[index]);
+
+          if (index == 0 || !_isSameDay(mylist[index]['createdAt'], mylist[index - 1]['createdAt'])) {
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                _buildDateHeader(mylist[index]['createdAt']),
+                myItem(mylist[index]),
+              ],
+            );
+          } else {
+            //
+            return myItem(mylist[index]);
+          }
         },
       ),
     );
   }
+
+  Widget _buildDateHeader(Timestamp? timestamp) {
+    if (timestamp == null) {
+      return SizedBox();
+    }
+
+    DateTime? dateTime = timestamp != null ? timestamp.toDate() : null;
+    String formattedDate = _formatDate(dateTime);
+    String headerText;
+
+    if (isToday(dateTime!)) {
+      headerText = 'Today';
+    } else if (isYesterday(dateTime)) {
+      headerText = 'Yesterday';
+    } else {
+      headerText = formattedDate;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade300,
+      ),
+      child: Text(
+        headerText,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+
+  bool _isSameDay(Timestamp? timestamp1, Timestamp? timestamp2) {
+    if (timestamp1 == null || timestamp2 == null) return false;
+    DateTime date1 = timestamp1.toDate();
+    DateTime date2 = timestamp2.toDate();
+    return date1.year == date2.year && date1.month == date2.month && date1.day == date2.day;
+  }
+
+  String _formatDate(DateTime? dateTime) {
+    if (dateTime == null) return '';
+    return '${dateTime.day}${_getDaySuffix(dateTime.day)} ${_getMonthName(dateTime.month)} ${dateTime.year}';
+  }
+
+  String _getDaySuffix(int day) {
+    if (day >= 11 && day <= 13) {
+      return 'th';
+    }
+    switch (day % 10) {
+      case 1:
+        return 'st';
+      case 2:
+        return 'nd';
+      case 3:
+        return 'rd';
+      default:
+        return 'th';
+    }
+  }
+
+  String _getMonthName(int month) {
+    switch (month) {
+      case 1:
+        return 'January';
+      case 2:
+        return 'February';
+      case 3:
+        return 'March';
+      case 4:
+        return 'April';
+      case 5:
+        return 'May';
+      case 6:
+        return 'June';
+      case 7:
+        return 'July';
+      case 8:
+        return 'August';
+      case 9:
+        return 'September';
+      case 10:
+        return 'October';
+      case 11:
+        return 'November';
+      case 12:
+        return 'December';
+      default:
+        return '';
+    }
+  }
+
+  bool isToday(DateTime date) {
+    final now = DateTime.now();
+    return date.year == now.year && date.month == now.month && date.day == now.day;
+  }
+
+  bool isYesterday(DateTime date) {
+    final now = DateTime.now();
+    final yesterday = now.subtract(Duration(days: 1));
+    return date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day;
+  }
+
+
 
   Widget myItem(Map<String, dynamic> map) {
     DateTime? dateTime = map['createdAt'] != null
@@ -402,54 +570,78 @@ class _MyChatPageState extends State<MyChatPage> {
         ? _formatTime(dateTime)
         : '';
 
+    String senderImage = map['senderImage'] ?? ''; // Provide a default value if senderImage is null
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        // color: map['sender'] != provider.usermodel!.uid ? Colors.blue : Colors.grey, // Change the color based on sender
+      ),
+      child: Row(
+        mainAxisAlignment: map['sender'] != provider.usermodel!.uid
+            ? MainAxisAlignment.start
+            : MainAxisAlignment.end,
         children: [
-          Container(
-            padding: EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(10),
-              color: map['sender'] == Constants.userid
-                  ? Colors.blue
-                  : Colors.grey,
+          if (map['sender'] != provider.usermodel!.uid)
+            Container(
+              margin: EdgeInsets.only(right: 10),
+              width: 30,
+              height: 30,
+              child: ClipOval(child: Image.network(senderImage)),
             ),
+          Expanded(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: map['sender'] == provider.usermodel!.uid
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                Text(
-                  map["senderName"].toString(),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: map['sender'] == Constants.userid
-                        ? Colors.white
-                        : Colors.black,
+                Padding(
+                  padding: EdgeInsets.only(bottom: 4), // Adjust the bottom padding of the sender name
+                  child: Text(
+                    map["senderName"] ?? '', // Provide a default value if senderName is null
+                    style: TextStyle(fontSize: 14, color: Colors.black,fontWeight: FontWeight.bold),
                   ),
                 ),
-                SizedBox(height: 5),
-                Text(
-                  map["msg"].toString(),
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: map['sender'] == Constants.userid
-                        ? Colors.white
-                        : Colors.black,
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: map['sender'] != provider.usermodel!.uid ? Colors.grey.shade300 : Colors.blue.shade200, // Change the color based on sender
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        map["msg"] ?? '',
+                        style: TextStyle(fontSize: 14, color: Colors.black),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          formattedTime,
+                          style: TextStyle(fontSize: 10, color: Colors.black,),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          SizedBox(height: 5),
-          Text(
-            formattedTime,
-            style: TextStyle(fontSize: 12, color: Colors.black54),
-          ),
+          if (map['sender'] == provider.usermodel!.uid)
+            Container(
+              margin: EdgeInsets.only(left: 10),
+              width: 30,
+              height: 30,
+              child: ClipOval(child: Image.network(provider.usermodel!.imgurl)),
+            )
         ],
       ),
     );
   }
-
   String _formatTime(DateTime dateTime) {
     DateTime now = DateTime.now();
     Duration difference = now.difference(dateTime);

@@ -1,7 +1,11 @@
 import 'dart:collection';
-
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chat_firebase/full_chat/MyProvider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -23,11 +27,18 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
 
   List<Map<String, dynamic>> mylist = [];
   String msgcollectionId="mygroupchat";
+
+
   ScrollController _scrollController=ScrollController();
 
 
   List<MyUserModel> users=[];
   String laststatus="online";
+  String?  downloadUrl;
+  File?  ImgFile;
+  String Imagelabel="";
+
+
   Future<void>getUserList()async {
     firestore.collection("myusers").orderBy("createdAt",descending: true).snapshots(includeMetadataChanges: true).listen((value) {
       List<DocumentSnapshot> docs = value.docs;
@@ -65,18 +76,24 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
     String m = txtmsg.text;
     if (m
         .trim()
-        .isNotEmpty) {
+        .isNotEmpty||ImgFile!=null) {
       Map<String, dynamic> data = new HashMap();
       data["msg"] = m;
+      data["Img"]=await uploadImage();
       data["createdAt"] = FieldValue.serverTimestamp();
       data["sender"] = provider.usermodel!.uid;
       data["senderName"] = provider.usermodel!.name;
       data["senderImage"]=provider.usermodel!.imgurl;
 
+
       await firestore.collection(msgcollectionId).doc().set(data);
       txtmsg.clear();
+      ImgFile=null;
+      setState(() {
+
+      });
       setStatus("online");
-      scrollToBottom();
+
     }
   }
   void getGroupInfo()async {
@@ -115,7 +132,11 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         Map<String, dynamic> mydata = d.data() as Map<String, dynamic>;
         mylist.add(mydata);
       }
+      scrollToBottom();
+
+      //_scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       setState(() {});
+
     });
   }
   void scrollToBottom() {
@@ -125,6 +146,48 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
       curve: Curves.easeOut,
     );
   }
+  Future<void> pickImage() async {
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
+
+    if (result != null) {
+      ImgFile = File(result!.files.first.path!);
+      Imagelabel = result.files.first.name;
+      setState(() {});
+    }
+  }
+
+  Future<String>uploadImage()async{
+    if (ImgFile != null) {
+
+      setState(() {});
+
+      FirebaseStorage firebaseStorage = FirebaseStorage.instance;
+
+      UploadTask uploadTask =
+      firebaseStorage.ref("profile").child(Imagelabel).putFile(ImgFile!);
+
+      TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
+
+      if (taskSnapshot.state == TaskState.success) {
+        downloadUrl = await taskSnapshot.ref.getDownloadURL();
+
+        setState(() {});
+        return downloadUrl!;
+      } else {
+        print("can't upload");
+        return "";
+      }
+    } else {
+      return "";
+    }
+  }
+
+
+
+
 
   @override
   void initState() {
@@ -159,6 +222,7 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
       children: [_appBar(),usersList(), _msgBody(), _chatInput()],
     );
   }
+
   Widget usersList(){
     return Container(
       height: 70,
@@ -208,6 +272,7 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         child: ListView.builder(
           controller: _scrollController,
             itemCount: mylist.length,
+            reverse: true,
             itemBuilder: (ctx, index) {
               return myItem(mylist[index]);
             }));
@@ -225,21 +290,37 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
           padding: EdgeInsets.only(bottom: 20, left: 15, right: 15, top: 10),
           child: Row(
             children: [
+              InkWell(
+                onTap: () {
+                  pickImage();
+                },
+                child: Container(
+                  height: 50,
+                  width: 50,
+                  child: Icon(
+                    Icons.photo,
+                    color: Colors.white,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(50),
+                    color: ImgFile!=null?Colors.black:Colors.blueGrey,
+                  ),
+                ),
+              ),
               Expanded(
-                  child: TextField(
-                    onChanged: (val) {
-
-                      if(val.isEmpty){
-                        if(laststatus!="online")
-                          setStatus("online");
-                      }
-                      else{
-                        if(laststatus!="typing")
-                          setStatus("typing");
-                      }
-                    },
-                    controller: txtmsg,
-                  )),
+                child: TextField(
+                  onChanged: (val) {
+                    if (val.isEmpty) {
+                      if (laststatus != "online")
+                        setStatus("online");
+                    } else {
+                      if (laststatus != "typing")
+                        setStatus("typing");
+                    }
+                  },
+                  controller: txtmsg,
+                ),
+              ),
               InkWell(
                 onTap: () {
                   sentMsg();
@@ -252,10 +333,11 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
                     color: Colors.white,
                   ),
                   decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(50),
-                      color: Colors.blueGrey),
+                    borderRadius: BorderRadius.circular(50),
+                    color: Colors.blueGrey,
+                  ),
                 ),
-              )
+              ),
             ],
           ),
         ),
@@ -263,13 +345,32 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
     );
   }
 
+
+
+
+
+
+
+
+
+
+
   Widget myItem(Map<String, dynamic> map) {
+    DateTime? dateTime = map['createdAt'] != null
+        ? (map['createdAt'] as Timestamp).toDate()
+        : null;
+    String formattedTime = dateTime != null
+        ? _formatTime(dateTime)
+        : '';
+
+    String senderImage = map['senderImage'] ?? ''; // Provide a default value if senderImage is null
+
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
       padding: EdgeInsets.all(10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
-        // color: map['sender']==Constants.userid?Colors.blue:Colors.grey,
+        // color: map['sender'] != provider.usermodel!.uid ? Colors.blue : Colors.grey, // Change the color based on sender
       ),
       child: Row(
         mainAxisAlignment: map['sender'] != provider.usermodel!.uid
@@ -278,37 +379,81 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         children: [
           if (map['sender'] != provider.usermodel!.uid)
             Container(
-                margin: EdgeInsets.only(right: 10),
-                width: 30,
-                height: 30,
-                child: ClipOval(child: Image.network(map["senderImage"]))),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: map['sender'] == provider.usermodel!.uid
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              Text(
-                map["senderName"],
-                style: TextStyle(fontSize: 15),
-              ),
-              Text(
-                map["msg"],
-                style: TextStyle(fontSize: 20),
-              ),
-            ],
+              margin: EdgeInsets.only(right: 10),
+              width: 30,
+              height: 30,
+              child: ClipOval(child: Image.network(senderImage)),
+            ),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: map['sender'] == provider.usermodel!.uid
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.only(bottom: 4), // Adjust the bottom padding of the sender name
+                  child: Text(
+                    map["senderName"] ?? '', // Provide a default value if senderName is null
+                    style: TextStyle(fontSize: 14, color: Colors.black,fontWeight: FontWeight.bold),
+                  ),
+                ),
+                Container(
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: map['sender'] != provider.usermodel!.uid ? Colors.grey.shade300 : Colors.blue.shade200, // Change the color based on sender
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        map["msg"] ?? '',
+                        style: TextStyle(fontSize: 14, color: Colors.black),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.only(top: 4),
+                        child: Text(
+                          formattedTime,
+                          style: TextStyle(fontSize: 10, color: Colors.black,),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           if (map['sender'] == provider.usermodel!.uid)
             Container(
-                margin: EdgeInsets.only(left: 10),
-                width: 30,
-                height: 30,
-                child:
-                ClipOval(child: Image.network(provider.usermodel!.imgurl)))
+              margin: EdgeInsets.only(left: 10),
+              width: 30,
+              height: 30,
+              child: ClipOval(child: Image.network(provider.usermodel!.imgurl)),
+            )
         ],
       ),
     );
   }
+  String _formatTime(DateTime dateTime) {
+    DateTime now = DateTime.now();
+    Duration difference = now.difference(dateTime);
+
+    if (difference.inDays > 0) {
+      return 'last sent ${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return 'last sent ${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return 'last sent ${difference.inMinutes}m ago';
+    } else {
+      return 'Just now';
+    }
+  }
+
+
+
+
+
 
   Widget _appBar() {
     return Container(

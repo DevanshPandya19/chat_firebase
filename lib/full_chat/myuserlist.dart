@@ -79,14 +79,12 @@ class _MyUserListState extends State<MyUserList> {
 
   Future<void> doLogout() async {
     try {
-      // Call updateUserStatus to set status to "offline"
+
       await updateUserStatus("offline", FirebaseAuth.instance.currentUser!.uid);
 
-      // Perform logout actions
       await GoogleSignIn().disconnect();
       await FirebaseAuth.instance.signOut();
 
-      // Navigate to splash screen or login page
       Navigator.pushReplacement(
           context, MaterialPageRoute(builder: (ctx) => MySplashScreen()));
     } catch (e) {
@@ -102,7 +100,7 @@ class _MyUserListState extends State<MyUserList> {
         });
   }
 
-  //
+
 
   Widget userItem(MyUserModel user) {
     return InkWell(
