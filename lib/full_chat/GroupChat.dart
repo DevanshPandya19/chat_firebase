@@ -1,5 +1,7 @@
 import 'dart:collection';
 import 'dart:io';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chat_firebase/full_chat/MyProvider.dart';
@@ -8,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'MyUserModel.dart';
 class MyGroupChatPage extends StatefulWidget {
@@ -33,12 +36,32 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
 
 
   List<MyUserModel> users=[];
+  bool _showEmoji = false;
   String laststatus="online";
   String?  downloadUrl;
   File?  ImgFile;
   String Imagelabel="";
 
+  Future<void> getCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
 
+      double latitude = position.latitude;
+      double longitude = position.longitude;
+
+      String mapUrl =
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+
+      if (await canLaunchUrl(Uri.parse(mapUrl))) {
+        await launchUrl(Uri.parse(mapUrl));
+      } else {
+        throw 'Could not launch $mapUrl';
+      }
+    } catch (e) {
+      print('Error getting location: $e');
+    }
+  }
   Future<void>getUserList()async {
     firestore.collection("myusers").orderBy("createdAt",descending: true).snapshots(includeMetadataChanges: true).listen((value) {
       List<DocumentSnapshot> docs = value.docs;
@@ -146,7 +169,7 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
       curve: Curves.easeOut,
     );
   }
-  Future<void> pickImage() async {
+  Future<void> pickImage(BuildContext context) async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.image,
       allowMultiple: false,
@@ -190,6 +213,39 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
     } else {
       print("Image null");
       return "";
+    }
+  }
+  Future<void> uploadDocument(File documentFile, String documentName) async {
+    try {
+      FirebaseStorage firebaseStorage = FirebaseStorage.instance;
+
+      UploadTask uploadTask = firebaseStorage
+          .ref("documents")
+          .child(documentName)
+          .putFile(documentFile);
+
+      TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
+
+      if (taskSnapshot.state == TaskState.success) {
+        print("Document uploaded successfully");
+        String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+        print("Download URL: $downloadUrl");
+
+        Map<String, dynamic> data = {
+          "msg": "Document: $documentName",
+          "documentUrl": downloadUrl,
+          "createdAt": FieldValue.serverTimestamp(),
+          "sender": provider.usermodel!.uid,
+          "senderName": provider.usermodel!.name,
+          "senderImage": provider.usermodel!.imgurl,
+        };
+
+        await firestore.collection(msgcollectionId).doc().set(data);
+      } else {
+        print("Failed to upload document");
+      }
+    } catch (e) {
+      print("Error uploading document: $e");
     }
   }
 
@@ -286,70 +342,161 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
             }));
   }
 
+
   Widget _chatInput() {
-    return Column(
-      children: [
-        Container(
-          width: double.maxFinite,
-          height: 1,
-          color: Colors.grey,
-        ),
-        Container(
-          padding: EdgeInsets.only(bottom: 20, left: 15, right: 15, top: 10),
-          child: Row(
+    return Container(
+      padding: EdgeInsets.all(8),
+      child: Column(
+        children: [
+          Row(
             children: [
-              InkWell(
-                onTap: () {
-                  pickImage();
-                },
+              Expanded(
                 child: Container(
-                  height: 50,
-                  width: 50,
-                  child: Icon(
-                    Icons.photo,
-                    color: Colors.white,
-                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(50),
-                    color: ImgFile!=null?Colors.black:Colors.blueGrey,
+                    color: Colors.white70,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        icon: _showEmoji
+                            ? Icon(Icons.keyboard, color: Colors.grey)
+                            : Icon(Icons.emoji_emotions, color: Colors.grey),
+                        onPressed: () {
+                          setState(() {
+                            _showEmoji = !_showEmoji;
+                          });
+                        },
+                      ),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: txtmsg,
+                          onChanged: (text) {
+                            setState(() {});
+                          },
+                          decoration: InputDecoration.collapsed(
+                            hintText: 'Type a message...',
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.attach_file, color: Colors.grey),
+                        onPressed: () {
+                          _showAttachmentOptions(context);
+                        },
+                      ),
+                      SizedBox(width: 6),
+                      Icon(Icons.camera_alt, color: Colors.grey),
+
+                    ],
                   ),
                 ),
               ),
-              Expanded(
-                child: TextField(
-                  onChanged: (val) {
-                    if (val.isEmpty) {
-                      if (laststatus != "online")
-                        setStatus("online");
-                    } else {
-                      if (laststatus != "typing")
-                        setStatus("typing");
+              
+              SizedBox(width: 8),
+              if (!_showEmoji &&
+                  (txtmsg.text.trim().isNotEmpty || ImgFile != null))
+                InkWell(
+                  onTap: () {
+                    if (txtmsg.text.trim().isNotEmpty || ImgFile != null) {
+                      sentMsg();
                     }
                   },
-                  controller: txtmsg,
-                ),
-              ),
-              InkWell(
-                onTap: () {
-                  sentMsg();
-                },
-                child: Container(
-                  height: 50,
-                  width: 50,
-                  child: Icon(
-                    Icons.send,
-                    color: Colors.white,
+
+                  child: Container(
+                    height: 40,
+                    width: 40,
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.send,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
+                ),
+              if (!_showEmoji && txtmsg.text.trim().isEmpty && ImgFile == null)
+                Container(
+                  height: 40,
+                  width: 40,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(50),
-                    color: Colors.blueGrey,
+                    color: Colors.blue,
+                    shape: BoxShape.circle,
+                  ),
+                  child: InkWell(
+                    child: Icon(Icons.mic, color: Colors.white),
                   ),
                 ),
-              ),
             ],
           ),
-        ),
-      ],
+          Offstage(
+            offstage: !_showEmoji,
+            child: SizedBox(
+              height: 300,
+              child: EmojiPicker(
+                textEditingController: txtmsg,
+                config: Config(),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  void _showAttachmentOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: Icon(Icons.location_on),
+                title: Text('Location'),
+                onTap: () {
+                  getCurrentLocation();
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.insert_drive_file),
+                title: Text('Document'),
+                onTap: () async {
+                  final FilePickerResult? result =
+                  await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['pdf'],
+                    allowMultiple: false,
+                  );
+
+                  if (result != null && result.files.isNotEmpty) {
+                    PlatformFile platformFile = result.files.first;
+                    print("FileName: ${platformFile.name}");
+                    print("FilePath: ${platformFile.path}");
+                    File pdfFile = File(platformFile.path!);
+                    await uploadDocument(pdfFile, platformFile.name!);
+                  }
+                  Navigator.pop(context);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.image),
+                title: Text('Photos'),
+                onTap: () {
+                  pickImage(context);
+                  //Navigator.pop(context);
+                },
+              ),
+
+            ],
+          ),
+        );
+      },
     );
   }
 

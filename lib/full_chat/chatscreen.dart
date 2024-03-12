@@ -2,7 +2,6 @@ import 'dart:collection';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chat_firebase/full_chat/MyUserModel.dart';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -14,8 +13,11 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
+
 import 'MyProvider.dart';
-import 'constantsdata.dart';
+
 class MyChatPage extends StatefulWidget {
   final MyUserModel userModel;
   const MyChatPage({required this.userModel});
@@ -30,17 +32,17 @@ class _MyChatPageState extends State<MyChatPage> {
   TextEditingController txtmsg = TextEditingController();
   late FirebaseFirestore firestore;
   late MyProvider provider;
-  String chatId="";
+  late CameraController _cameraController;
+  String chatId = "";
 
   List<Map<String, dynamic>> mylist = [];
-  ScrollController _scrollController=ScrollController();
-  bool _showEmoji=false;
-  String?  downloadUrl;
-  File?  ImgFile;
-  String Imagelabel="";
+  ScrollController _scrollController = ScrollController();
+  bool _showEmoji = false;
+  String? downloadUrl;
+  File? ImgFile;
+  String Imagelabel = "";
 
-
-  String msgCollectionId="mypersonalchat";
+  String msgCollectionId = "mypersonalchat";
   Future<String> getChatId() async {
     String otherUserId = widget.userModel.uid;
     String myUserId = FirebaseAuth.instance.currentUser!.uid;
@@ -69,8 +71,6 @@ class _MyChatPageState extends State<MyChatPage> {
     }
   }
 
-
-
   Future<void> getCurrentLocation() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
@@ -79,7 +79,8 @@ class _MyChatPageState extends State<MyChatPage> {
       double latitude = position.latitude;
       double longitude = position.longitude;
 
-      String mapUrl = 'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
+      String mapUrl =
+          'https://www.google.com/maps/search/?api=1&query=$latitude,$longitude';
 
       if (await canLaunchUrl(Uri.parse(mapUrl))) {
         await launchUrl(Uri.parse(mapUrl));
@@ -90,6 +91,9 @@ class _MyChatPageState extends State<MyChatPage> {
       print('Error getting location: $e');
     }
   }
+
+
+
   Future<void> pickImage(BuildContext context) async {
     final FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -105,11 +109,15 @@ class _MyChatPageState extends State<MyChatPage> {
       setState(() {});
     }
   }
+
   Future<void> uploadDocument(File documentFile, String documentName) async {
     try {
       FirebaseStorage firebaseStorage = FirebaseStorage.instance;
 
-      UploadTask uploadTask = firebaseStorage.ref("documents").child(documentName).putFile(documentFile);
+      UploadTask uploadTask = firebaseStorage
+          .ref("documents")
+          .child(documentName)
+          .putFile(documentFile);
 
       TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
 
@@ -117,7 +125,6 @@ class _MyChatPageState extends State<MyChatPage> {
         print("Document uploaded successfully");
         String downloadUrl = await taskSnapshot.ref.getDownloadURL();
         print("Download URL: $downloadUrl");
-
 
         Map<String, dynamic> data = {
           "msg": "Document: $documentName",
@@ -137,21 +144,16 @@ class _MyChatPageState extends State<MyChatPage> {
     }
   }
 
-
-
-
-
-  Future<String>uploadImage()async{
+  Future<String> uploadImage() async {
     if (ImgFile != null) {
-
       setState(() {});
 
       FirebaseStorage firebaseStorage = FirebaseStorage.instance;
 
-
-
-      UploadTask uploadTask =
-      firebaseStorage.ref("profile").child(Imagelabel).putFile(ImgFile!, SettableMetadata());
+      UploadTask uploadTask = firebaseStorage
+          .ref("profile")
+          .child(Imagelabel)
+          .putFile(ImgFile!, SettableMetadata());
 
       TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
 
@@ -172,37 +174,26 @@ class _MyChatPageState extends State<MyChatPage> {
     }
   }
 
-
-
-
-
-
   Future<void> sentMsg() async {
     String m = txtmsg.text;
-    if (m
-        .trim()
-        .isNotEmpty||ImgFile!=null) {
+    if (m.trim().isNotEmpty || ImgFile != null) {
       Map<String, dynamic> data = new HashMap();
       data["msg"] = m;
-      data["Img"]=await uploadImage();
+      data["Img"] = await uploadImage();
 
       data["createdAt"] = FieldValue.serverTimestamp();
       data["sender"] = provider.usermodel!.uid;
       data["senderName"] = provider.usermodel!.name;
-      data["senderImage"]=provider.usermodel!.imgurl;
-
+      data["senderImage"] = provider.usermodel!.imgurl;
 
       await firestore.collection(msgCollectionId).doc().set(data);
       txtmsg.clear();
-      ImgFile=null;
+      ImgFile = null;
 
-      setState(() {
-
-      });
-
-
+      setState(() {});
     }
   }
+
   void scrollToBottom() {
     _scrollController.animateTo(
       _scrollController.position.maxScrollExtent,
@@ -211,10 +202,15 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
-  Future<void> getMsg() async{
-    chatId=await getChatId();
+
+
+
+  Future<void> getMsg() async {
+    chatId = await getChatId();
     firestore
-        .collection(msgCollectionId).orderBy("createdAt", descending: true)
+
+        .collection(msgCollectionId) // Use the generated chat ID to fetch messages
+        .orderBy("createdAt", descending: true)
         .snapshots(includeMetadataChanges: true)
         .listen((data) {
       mylist.clear();
@@ -227,11 +223,9 @@ class _MyChatPageState extends State<MyChatPage> {
       _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       //scrollToBottom();
 
-
       setState(() {});
     });
   }
-
 
 
   @override
@@ -258,7 +252,6 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
-
   Widget _mainBody() {
     return Container(
       decoration: BoxDecoration(
@@ -276,7 +269,6 @@ class _MyChatPageState extends State<MyChatPage> {
       ),
     );
   }
-
 
   Widget _appbar() {
     return Container(
@@ -320,22 +312,18 @@ class _MyChatPageState extends State<MyChatPage> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
             ],
           ),
           Spacer(),
           Spacer(),
           Spacer(),
           Spacer(),
-
           Spacer(),
           Icon(Icons.more_vert, color: Colors.white),
         ],
       ),
     );
   }
-
-
 
   Widget _chatInput() {
     return Container(
@@ -381,15 +369,16 @@ class _MyChatPageState extends State<MyChatPage> {
                           _showAttachmentOptions(context);
                         },
                       ),
-                      SizedBox(width: 8),
+                      SizedBox(width: 6),
                       Icon(Icons.camera_alt, color: Colors.grey),
+
                     ],
                   ),
                 ),
               ),
               SizedBox(width: 8),
-
-              if (!_showEmoji && (txtmsg.text.trim().isNotEmpty || ImgFile != null))
+              if (!_showEmoji &&
+                  (txtmsg.text.trim().isNotEmpty || ImgFile != null))
                 InkWell(
                   onTap: () {
                     if (txtmsg.text.trim().isNotEmpty || ImgFile != null) {
@@ -440,7 +429,6 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
-
   void _showAttachmentOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -460,7 +448,8 @@ class _MyChatPageState extends State<MyChatPage> {
                 leading: Icon(Icons.insert_drive_file),
                 title: Text('Document'),
                 onTap: () async {
-                  final FilePickerResult? result = await FilePicker.platform.pickFiles(
+                  final FilePickerResult? result =
+                      await FilePicker.platform.pickFiles(
                     type: FileType.custom,
                     allowedExtensions: ['pdf'],
                     allowMultiple: false,
@@ -494,7 +483,8 @@ class _MyChatPageState extends State<MyChatPage> {
 
   Widget _msgBody() {
     mylist.retainWhere((element) => element['createdAt'] != null);
-    mylist.sort((a, b) => (a['createdAt'] as Timestamp).compareTo(b['createdAt'] as Timestamp));
+    mylist.sort((a, b) =>
+        (a['createdAt'] as Timestamp).compareTo(b['createdAt'] as Timestamp));
 
     return Expanded(
       child: ListView.builder(
@@ -502,7 +492,9 @@ class _MyChatPageState extends State<MyChatPage> {
         itemCount: mylist.length,
         reverse: false,
         itemBuilder: (ctx, index) {
-          if (index == 0 || !_isSameDay(mylist[index]['createdAt'] as Timestamp, mylist[index - 1]['createdAt'] as Timestamp)) {
+          if (index == 0 ||
+              !_isSameDay(mylist[index]['createdAt'] as Timestamp,
+                  mylist[index - 1]['createdAt'] as Timestamp)) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
@@ -517,8 +509,6 @@ class _MyChatPageState extends State<MyChatPage> {
       ),
     );
   }
-
-
 
   Widget _buildDateHeader(Timestamp? timestamp) {
     if (timestamp == null) {
@@ -555,7 +545,9 @@ class _MyChatPageState extends State<MyChatPage> {
     if (timestamp1 == null || timestamp2 == null) return false;
     DateTime date1 = timestamp1.toDate();
     DateTime date2 = timestamp2.toDate();
-    return date1.year == date2.year && date1.month == date2.month && date1.day == date2.day;
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
   }
 
   String _formatDate(DateTime? dateTime) {
@@ -612,28 +604,30 @@ class _MyChatPageState extends State<MyChatPage> {
 
   bool isToday(DateTime date) {
     final now = DateTime.now();
-    return date.year == now.year && date.month == now.month && date.day == now.day;
+    return date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
   }
 
   bool isYesterday(DateTime date) {
     final now = DateTime.now();
     final yesterday = now.subtract(Duration(days: 1));
-    return date.year == yesterday.year && date.month == yesterday.month && date.day == yesterday.day;
+    return date.year == yesterday.year &&
+        date.month == yesterday.month &&
+        date.day == yesterday.day;
   }
-
 
 
   Widget myItem(Map<String, dynamic> map) {
     DateTime? dateTime = map['createdAt'] != null
         ? (map['createdAt'] as Timestamp).toDate()
         : null;
-    String formattedTime = dateTime != null
-        ? _formatTime(dateTime)
-        : '';
+    String formattedTime = dateTime != null ? _formatTime(dateTime) : '';
 
-    String senderImage = map['senderImage'] ?? ''; // Provide a default value if senderImage is null
+    String senderImage = map['senderImage'] ??
+        ''; // Provide a default value if senderImage is null
     String messageImage = map['Img'] ?? '';
-    String messageDocument = map['Document'] ?? '';
+    String messageDocument = map['documentUrl'] ?? '';
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
       padding: EdgeInsets.all(10),
@@ -663,18 +657,26 @@ class _MyChatPageState extends State<MyChatPage> {
                 Padding(
                   padding: EdgeInsets.only(bottom: 4),
                   child: Text(
-                    map["senderName"] ?? '', // Provide a default value if senderName is null
-                    style: TextStyle(fontSize: 14, color: Colors.black,fontWeight: FontWeight.bold),
+                    map["senderName"] ??
+                        '', // Provide a default value if senderName is null
+                    style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold),
                   ),
                 ),
-                if(messageImage.isNotEmpty) CachedNetworkImage(
-                  imageUrl: messageImage,
-                ),
+                if (messageImage.isNotEmpty)
+                  CachedNetworkImage(
+                    imageUrl: messageImage,
+                  ),
                 Container(
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(8),
-                    color: map['sender'] != provider.usermodel!.uid ? Colors.grey.shade300 : Colors.blue.shade200, // Change the color based on sender
+                    color: map['sender'] != provider.usermodel!.uid
+                        ? Colors.grey.shade300
+                        : Colors
+                        .blue.shade200, // Change the color based on sender
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -687,7 +689,10 @@ class _MyChatPageState extends State<MyChatPage> {
                         padding: EdgeInsets.only(top: 4),
                         child: Text(
                           formattedTime,
-                          style: TextStyle(fontSize: 10, color: Colors.black,),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.black,
+                          ),
                         ),
                       ),
                     ],
@@ -707,6 +712,7 @@ class _MyChatPageState extends State<MyChatPage> {
       ),
     );
   }
+
   String _formatTime(DateTime dateTime) {
     DateTime now = DateTime.now();
     Duration difference = now.difference(dateTime);
