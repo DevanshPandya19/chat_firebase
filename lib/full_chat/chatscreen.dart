@@ -1,5 +1,6 @@
 import 'dart:collection';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:chat_firebase/full_chat/MyUserModel.dart';
 
 import 'package:file_picker/file_picker.dart';
@@ -34,8 +35,11 @@ class _MyChatPageState extends State<MyChatPage> {
   List<Map<String, dynamic>> mylist = [];
   ScrollController _scrollController=ScrollController();
   bool _showEmoji=false;
-  late FileType _fileType;
-  late Reference _storageRef;
+  String?  downloadUrl;
+  File?  ImgFile;
+  String Imagelabel="";
+
+
   String msgCollectionId="mypersonalchat";
   Future<String> getChatId() async {
     String otherUserId = widget.userModel.uid;
@@ -65,14 +69,7 @@ class _MyChatPageState extends State<MyChatPage> {
     }
   }
 
-  void _makePhoneCall() async {
-    const url = 'tel:';
-    if (await canLaunchUrl(Uri.parse(url))) {
-      await launchUrl(Uri.parse(url));
-    } else {
-      throw 'Could not launch $url';
-    }
-  }
+
 
   Future<void> getCurrentLocation() async {
     try {
@@ -93,63 +90,116 @@ class _MyChatPageState extends State<MyChatPage> {
       print('Error getting location: $e');
     }
   }
-  Future<void> _openFilePicker(BuildContext context) async {
-    try {
-      final FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Allow selection of any file type
-      );
+  Future<void> pickImage(BuildContext context) async {
+    final FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+    );
 
-      if (result != null) {
-        final PlatformFile file = result.files.single;
-        if (file.path != null) {
-          await _handleFileSelection(File(file.path!));
-        } else {
-          print('Error: File not found.');
-        }
+    if (result != null && result.files.isNotEmpty) {
+      PlatformFile platformFile = result.files.first;
+      print("FileName:${platformFile.name}");
+      print("FilePath:${platformFile.path}");
+      ImgFile = File(platformFile.path!);
+      Imagelabel = result.files.first.name;
+      setState(() {});
+    }
+  }
+  Future<void> uploadDocument(File documentFile, String documentName) async {
+    try {
+      FirebaseStorage firebaseStorage = FirebaseStorage.instance;
+
+      UploadTask uploadTask = firebaseStorage.ref("documents").child(documentName).putFile(documentFile);
+
+      TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
+
+      if (taskSnapshot.state == TaskState.success) {
+        print("Document uploaded successfully");
+        String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+        print("Download URL: $downloadUrl");
+
+
+        Map<String, dynamic> data = {
+          "msg": "Document: $documentName",
+          "documentUrl": downloadUrl,
+          "createdAt": FieldValue.serverTimestamp(),
+          "sender": provider.usermodel!.uid,
+          "senderName": provider.usermodel!.name,
+          "senderImage": provider.usermodel!.imgurl,
+        };
+
+        await firestore.collection(msgCollectionId).doc().set(data);
       } else {
-        // User canceled the picker
+        print("Failed to upload document");
       }
     } catch (e) {
-      print('Error picking file: $e');
-    }
-  }
-
-  Future<void> _handleFileSelection(File file) async {
-    try {
-      final String fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      final uploadTask = _storageRef.child('chats/$fileName').putFile(file);
-
-      final TaskSnapshot snapshot = await uploadTask;
-      final String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      // Ensure _fileType is set properly
-      _fileType = FileType.any;
-
-      // Call sentMsg with the file URL
-      sentMsg(msg: downloadUrl, fileType: _fileType);
-    } catch (e) {
-      print('Error uploading file: $e');
+      print("Error uploading document: $e");
     }
   }
 
 
 
-  Future<void> sentMsg({String? msg, FileType? fileType}) async {
+
+
+  Future<String>uploadImage()async{
+    if (ImgFile != null) {
+
+      setState(() {});
+
+      FirebaseStorage firebaseStorage = FirebaseStorage.instance;
+
+
+
+      UploadTask uploadTask =
+      firebaseStorage.ref("profile").child(Imagelabel).putFile(ImgFile!, SettableMetadata());
+
+      TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
+
+      if (taskSnapshot.state == TaskState.success) {
+        print("Image uploaded successfully");
+        downloadUrl = await taskSnapshot.ref.getDownloadURL();
+        print("downloadUrl:$downloadUrl");
+
+        setState(() {});
+        return downloadUrl!;
+      } else {
+        print("can't upload");
+        return "";
+      }
+    } else {
+      print("Image null");
+      return "";
+    }
+  }
+
+
+
+
+
+
+  Future<void> sentMsg() async {
     String m = txtmsg.text;
     if (m
         .trim()
-        .isNotEmpty) {
+        .isNotEmpty||ImgFile!=null) {
       Map<String, dynamic> data = new HashMap();
       data["msg"] = m;
+      data["Img"]=await uploadImage();
+
       data["createdAt"] = FieldValue.serverTimestamp();
       data["sender"] = provider.usermodel!.uid;
       data["senderName"] = provider.usermodel!.name;
       data["senderImage"]=provider.usermodel!.imgurl;
-    //  data["fileType"] = fileType?.toString();
+
 
       await firestore.collection(msgCollectionId).doc().set(data);
       txtmsg.clear();
-      scrollToBottom();
+      ImgFile=null;
+
+      setState(() {
+
+      });
+
 
     }
   }
@@ -174,6 +224,8 @@ class _MyChatPageState extends State<MyChatPage> {
         Map<String, dynamic> mydata = d.data() as Map<String, dynamic>;
         mylist.add(mydata);
       }
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      //scrollToBottom();
 
 
       setState(() {});
@@ -186,8 +238,7 @@ class _MyChatPageState extends State<MyChatPage> {
   void initState() {
     super.initState();
     _scrollController = ScrollController();
-    _fileType = FileType.any;
-    _storageRef = FirebaseStorage.instance.ref();
+
 
     firestore = FirebaseFirestore.instance;
     Future.delayed(Duration(microseconds: 500), () {
@@ -276,18 +327,14 @@ class _MyChatPageState extends State<MyChatPage> {
           Spacer(),
           Spacer(),
           Spacer(),
-          IconButton(
-            icon: Icon(Icons.phone_callback_rounded, color: Colors.white),
-            onPressed: () {
-              _makePhoneCall();
-            },
-          ),
+
           Spacer(),
           Icon(Icons.more_vert, color: Colors.white),
         ],
       ),
     );
   }
+
 
 
   Widget _chatInput() {
@@ -341,10 +388,11 @@ class _MyChatPageState extends State<MyChatPage> {
                 ),
               ),
               SizedBox(width: 8),
-              if (!_showEmoji && txtmsg.text.trim().isNotEmpty)
+
+              if (!_showEmoji && (txtmsg.text.trim().isNotEmpty || ImgFile != null))
                 InkWell(
                   onTap: () {
-                    if (txtmsg.text.trim().isNotEmpty) {
+                    if (txtmsg.text.trim().isNotEmpty || ImgFile != null) {
                       sentMsg();
                     }
                   },
@@ -363,7 +411,7 @@ class _MyChatPageState extends State<MyChatPage> {
                     ),
                   ),
                 ),
-              if (!_showEmoji && txtmsg.text.trim().isEmpty)
+              if (!_showEmoji && txtmsg.text.trim().isEmpty && ImgFile == null)
                 Container(
                   height: 40,
                   width: 40,
@@ -392,6 +440,7 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
+
   void _showAttachmentOptions(BuildContext context) {
     showModalBottomSheet(
       context: context,
@@ -408,18 +457,30 @@ class _MyChatPageState extends State<MyChatPage> {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.contact_phone),
-                title: Text('Contact'),
-                onTap: () {
+                leading: Icon(Icons.insert_drive_file),
+                title: Text('Document'),
+                onTap: () async {
+                  final FilePickerResult? result = await FilePicker.platform.pickFiles(
+                    type: FileType.custom,
+                    allowedExtensions: ['pdf'],
+                    allowMultiple: false,
+                  );
 
+                  if (result != null && result.files.isNotEmpty) {
+                    PlatformFile platformFile = result.files.first;
+                    print("FileName: ${platformFile.name}");
+                    print("FilePath: ${platformFile.path}");
+                    File pdfFile = File(platformFile.path!);
+                    await uploadDocument(pdfFile, platformFile.name!);
+                  }
                   Navigator.pop(context);
                 },
               ),
               ListTile(
-                leading: Icon(Icons.insert_drive_file),
-                title: Text('Document'),
+                leading: Icon(Icons.image),
+                title: Text('Photos'),
                 onTap: () {
-                  _openFilePicker(context);
+                  pickImage(context);
                   //Navigator.pop(context);
                 },
               ),
@@ -431,33 +492,33 @@ class _MyChatPageState extends State<MyChatPage> {
     );
   }
 
-
-
   Widget _msgBody() {
+    mylist.retainWhere((element) => element['createdAt'] != null);
+    mylist.sort((a, b) => (a['createdAt'] as Timestamp).compareTo(b['createdAt'] as Timestamp));
+
     return Expanded(
       child: ListView.builder(
         controller: _scrollController,
         itemCount: mylist.length,
-
+        reverse: false,
         itemBuilder: (ctx, index) {
-
-          if (index == 0 || !_isSameDay(mylist[index]['createdAt'], mylist[index - 1]['createdAt'])) {
-
+          if (index == 0 || !_isSameDay(mylist[index]['createdAt'] as Timestamp, mylist[index - 1]['createdAt'] as Timestamp)) {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _buildDateHeader(mylist[index]['createdAt']),
+                _buildDateHeader(mylist[index]['createdAt'] as Timestamp),
                 myItem(mylist[index]),
               ],
             );
           } else {
-            //
             return myItem(mylist[index]);
           }
         },
       ),
     );
   }
+
+
 
   Widget _buildDateHeader(Timestamp? timestamp) {
     if (timestamp == null) {
@@ -571,7 +632,8 @@ class _MyChatPageState extends State<MyChatPage> {
         : '';
 
     String senderImage = map['senderImage'] ?? ''; // Provide a default value if senderImage is null
-
+    String messageImage = map['Img'] ?? '';
+    String messageDocument = map['Document'] ?? '';
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
       padding: EdgeInsets.all(10),
@@ -599,11 +661,14 @@ class _MyChatPageState extends State<MyChatPage> {
                   : CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: EdgeInsets.only(bottom: 4), // Adjust the bottom padding of the sender name
+                  padding: EdgeInsets.only(bottom: 4),
                   child: Text(
                     map["senderName"] ?? '', // Provide a default value if senderName is null
                     style: TextStyle(fontSize: 14, color: Colors.black,fontWeight: FontWeight.bold),
                   ),
+                ),
+                if(messageImage.isNotEmpty) CachedNetworkImage(
+                  imageUrl: messageImage,
                 ),
                 Container(
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),

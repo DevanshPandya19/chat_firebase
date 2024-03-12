@@ -168,10 +168,7 @@ class _MyUserListState extends State<MyUserList> {
             onTap: () {
               Navigator.pop(context);
             },
-            child: Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.white,
-            )),
+            ),
         title: Text(
           "Chat Room",
           style: TextStyle(color: Colors.white),

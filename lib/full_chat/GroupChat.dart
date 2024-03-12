@@ -132,9 +132,9 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         Map<String, dynamic> mydata = d.data() as Map<String, dynamic>;
         mylist.add(mydata);
       }
-      scrollToBottom();
+     // scrollToBottom();
 
-      //_scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       setState(() {});
 
     });
@@ -152,8 +152,11 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
       allowMultiple: false,
     );
 
-    if (result != null) {
-      ImgFile = File(result!.files.first.path!);
+    if (result != null && result.files.isNotEmpty) {
+      PlatformFile platformFile = result.files.first;
+      print("FileName:${platformFile.name}");
+      print("FilePath:${platformFile.path}");
+      ImgFile = File(platformFile.path!);
       Imagelabel = result.files.first.name;
       setState(() {});
     }
@@ -166,13 +169,17 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
 
       FirebaseStorage firebaseStorage = FirebaseStorage.instance;
 
+
+
       UploadTask uploadTask =
-      firebaseStorage.ref("profile").child(Imagelabel).putFile(ImgFile!);
+      firebaseStorage.ref("profile").child(Imagelabel).putFile(ImgFile!, SettableMetadata());
 
       TaskSnapshot taskSnapshot = await uploadTask.then((snap) => snap);
 
       if (taskSnapshot.state == TaskState.success) {
+        print("Image uploaded successfully");
         downloadUrl = await taskSnapshot.ref.getDownloadURL();
+        print("downloadUrl:$downloadUrl");
 
         setState(() {});
         return downloadUrl!;
@@ -181,6 +188,7 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         return "";
       }
     } else {
+      print("Image null");
       return "";
     }
   }
@@ -363,7 +371,10 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
         ? _formatTime(dateTime)
         : '';
 
-    String senderImage = map['senderImage'] ?? ''; // Provide a default value if senderImage is null
+    String senderImage = map['senderImage'] ?? '';
+    String messageImage = map['Img'] ?? '';
+
+
 
     return Container(
       margin: EdgeInsets.symmetric(vertical: 5, horizontal: 10),
@@ -398,6 +409,9 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
                     style: TextStyle(fontSize: 14, color: Colors.black,fontWeight: FontWeight.bold),
                   ),
                 ),
+                if(messageImage.isNotEmpty) CachedNetworkImage(
+                  imageUrl: messageImage,
+                ),
                 Container(
                   padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   decoration: BoxDecoration(
@@ -411,6 +425,7 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
                         map["msg"] ?? '',
                         style: TextStyle(fontSize: 14, color: Colors.black),
                       ),
+
                       Padding(
                         padding: EdgeInsets.only(top: 4),
                         child: Text(
@@ -449,11 +464,6 @@ class _MyGroupChatPageState extends State<MyGroupChatPage> {
       return 'Just now';
     }
   }
-
-
-
-
-
 
   Widget _appBar() {
     return Container(
