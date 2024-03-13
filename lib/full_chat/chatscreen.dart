@@ -209,7 +209,7 @@ class _MyChatPageState extends State<MyChatPage> {
     chatId = await getChatId();
     firestore
 
-        .collection(msgCollectionId) // Use the generated chat ID to fetch messages
+        .collection(msgCollectionId)
         .orderBy("createdAt", descending: true)
         .snapshots(includeMetadataChanges: true)
         .listen((data) {
